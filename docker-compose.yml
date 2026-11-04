@@ -1,0 +1,43 @@
+name: logisql
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////app/data/logisql_demo.db}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      ALLOWED_TABLES: ${ALLOWED_TABLES:-orders,order_items,products,sellers,order_payments}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      MAX_RETRIES: ${MAX_RETRIES:-3}
+      DEFAULT_ROW_LIMIT: ${DEFAULT_ROW_LIMIT:-200}
+      MAX_ROW_LIMIT: ${MAX_ROW_LIMIT:-1000}
+      QUERY_TIMEOUT_MS: ${QUERY_TIMEOUT_MS:-15000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501,http://127.0.0.1:8501}
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-logisql-agent}
+    volumes:
+      - logisql-data:/app/data
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  logisql-data:
