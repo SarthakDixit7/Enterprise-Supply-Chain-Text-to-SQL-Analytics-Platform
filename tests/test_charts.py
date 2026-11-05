@@ -52,6 +52,42 @@ def test_builds_pie_chart() -> None:
     assert chart["data"][0]["type"] == "pie"
 
 
+def test_pie_with_negative_values_falls_back_to_bar() -> None:
+    rows = [
+        {"category": "profitable", "profit": 10.0},
+        {"category": "loss-making", "profit": -4.0},
+    ]
+    chart, warning = build_chart(
+        rows=rows,
+        columns=["category", "profit"],
+        requested=ChartSpec(type="pie", x="category", y="profit"),
+    )
+    assert chart is not None
+    assert chart["data"][0]["type"] == "bar"
+    assert warning is not None
+    assert "negative" in warning
+
+
+def test_pie_groups_a_long_tail_into_other() -> None:
+    rows = [
+        {"category": f"category_{index}", "revenue": float(100 - index)}
+        for index in range(15)
+    ]
+    chart, warning = build_chart(
+        rows=rows,
+        columns=["category", "revenue"],
+        requested=ChartSpec(type="pie", x="category", y="revenue"),
+    )
+    assert chart is not None
+    trace = chart["data"][0]
+    assert len(trace["labels"]) == 10
+    assert trace["labels"][-1] == "Other"
+    assert trace["values"][-1] == sum(100 - index for index in range(9, 15))
+    assert sum(trace["values"]) == sum(100 - index for index in range(15))
+    assert warning is not None
+    assert "Other" in warning
+
+
 def test_invalid_chart_falls_back_to_inferred_chart() -> None:
     chart, warning = build_chart(
         rows=ROWS,

@@ -89,7 +89,6 @@ def _measure_columns(columns: list[str], rows: list[dict[str, Any]]) -> list[str
     return sorted(numeric, key=lambda column: (-score(column), order[column]))
 
 
-
 def _is_temporal_column(rows: list[dict[str, Any]], column: str) -> bool:
     values = [row.get(column) for row in rows if row.get(column) is not None]
     if not values:
@@ -188,6 +187,36 @@ def _sort_rows(rows: list[dict[str, Any]], x: str) -> list[dict[str, Any]]:
         return rows
 
 
+_PIE_MAX_SLICES = 10
+
+
+def _combine_warnings(*warnings: str | None) -> str | None:
+    present = [warning for warning in warnings if warning]
+    return " ".join(present) or None
+
+
+def _collapse_pie_rows(
+    rows: list[dict[str, Any]],
+    *,
+    x: str,
+    y: str,
+    max_slices: int = _PIE_MAX_SLICES,
+) -> tuple[list[dict[str, Any]], str | None]:
+    numeric_rows = [row for row in rows if _is_number(row.get(y))]
+    if len(numeric_rows) <= max_slices:
+        return rows, None
+
+    ordered = sorted(numeric_rows, key=lambda row: row[y], reverse=True)
+    kept = ordered[: max_slices - 1]
+    collapsed = [{x: row.get(x), y: row.get(y)} for row in kept]
+    collapsed.append({x: "Other", y: sum(row[y] for row in ordered[max_slices - 1:])})
+    return (
+        collapsed,
+        f"Pie chart limited to the top {max_slices - 1} categories; "
+        "the rest are grouped as 'Other'.",
+    )
+
+
 def build_chart(
     *,
     rows: list[dict[str, Any]],
@@ -205,9 +234,20 @@ def build_chart(
 
     x_column, y_column = spec.x, spec.y
     title = spec.title or f"{y_column.replace('_', ' ').title()} by {x_column.replace('_', ' ')}"
+    chart_type = spec.type
+    if chart_type == "pie":
+        if any(_is_number(row.get(y_column)) and row[y_column] < 0 for row in rows):
+            chart_type = "bar"
+            warning = _combine_warnings(
+                warning,
+                "Pie charts cannot show negative values; a bar chart was used instead.",
+            )
+        else:
+            rows, collapse_warning = _collapse_pie_rows(rows, x=x_column, y=y_column)
+            warning = _combine_warnings(warning, collapse_warning)
     figure = go.Figure()
 
-    if spec.type == "pie":
+    if chart_type == "pie":
         figure.add_trace(
             go.Pie(
                 labels=[row.get(x_column) for row in rows],
@@ -253,9 +293,9 @@ def build_chart(
             figure.add_trace(trace)
 
     layout = _base_layout(title)
-    if spec.type in {"bar", "line", "area", "scatter"} and len(rows) > 12:
+    if chart_type in {"bar", "line", "area", "scatter"} and len(rows) > 12:
         layout["xaxis"] = {"tickangle": -25, "automargin": True}
-    if spec.type == "bar":
+    if chart_type == "bar":
         layout["barmode"] = "group"
     figure.update_layout(**layout)
 
