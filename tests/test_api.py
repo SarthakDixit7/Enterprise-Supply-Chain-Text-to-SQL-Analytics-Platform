@@ -72,6 +72,28 @@ def test_validate_blocks_unknown_table(client: TestClient) -> None:
     assert "not allowlisted" in payload["error"]
 
 
+def test_metrics_endpoint_tracks_queries(client: TestClient) -> None:
+    initial = client.get("/api/v1/metrics")
+    assert initial.status_code == 200
+    assert initial.json()["queries_total"] == 0
+
+    assert (
+        client.post(
+            "/api/v1/query",
+            json={"question": "How many orders are there?"},
+        ).status_code
+        == 200
+    )
+
+    payload = client.get("/api/v1/metrics").json()
+    assert payload["queries_total"] == 1
+    assert payload["queries_succeeded"] == 1
+    assert payload["queries_failed"] == 0
+    assert payload["in_flight"] == 0
+    assert payload["latency_samples"] == 1
+    assert payload["p95_latency_ms"] is not None
+
+
 def test_query_endpoint(client: TestClient) -> None:
     response = client.post(
         "/api/v1/query",

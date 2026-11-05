@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from dataclasses import asdict
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
@@ -13,6 +15,7 @@ from logisql.api.schemas import (
     ExampleQuestion,
     ExamplesResponse,
     HealthResponse,
+    MetricsResponse,
     OverviewResponse,
     QueryRequest,
     QueryResponse,
@@ -112,6 +115,12 @@ async def health(request: Request) -> HealthResponse:
     )
 
 
+@router.get("/metrics", response_model=MetricsResponse, tags=["system"])
+async def metrics(request: Request) -> MetricsResponse:
+    container = _container(request)
+    return MetricsResponse(**asdict(container.metrics.snapshot()))
+
+
 @router.get("/schema", response_model=SchemaResponse, tags=["schema"])
 async def schema(request: Request, force: bool = Query(default=False)) -> SchemaResponse:
     container = _container(request)
@@ -165,14 +174,28 @@ async def query(request: Request, payload: QueryRequest) -> QueryResponse:
         container.settings.query_queue_timeout_seconds,
     )
     if not acquired:
+        container.metrics.record_rejected_busy()
         raise ServerBusyError(
             "The analytics engine is at capacity. Retry in a few seconds."
         )
+    container.metrics.record_start()
+    started = time.perf_counter()
     try:
         result = await container.agent.run(
             question=payload.question,
             request_id=request_id,
             row_limit=payload.row_limit,
+        )
+    except BaseException:
+        container.metrics.record_finish(
+            success=False,
+            latency_ms=(time.perf_counter() - started) * 1000,
+        )
+        raise
+    else:
+        container.metrics.record_finish(
+            success=result.get("status") == "success",
+            latency_ms=(time.perf_counter() - started) * 1000,
         )
     finally:
         container.query_semaphore.release()

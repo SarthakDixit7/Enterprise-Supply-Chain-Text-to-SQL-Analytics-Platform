@@ -16,6 +16,7 @@ from logisql import __version__
 from logisql.agent.graph import LogiSQLAgent
 from logisql.agent.llm import AnalyticsLLM, GroqAnalyticsLLM, LLMConfigurationError
 from logisql.api.container import AppContainer
+from logisql.api.metrics import QueryMetrics
 from logisql.api.routes import (
     ServerBusyError,
     llm_configuration_error_response,
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         llm=llm,
         agent=agent,
         query_semaphore=asyncio.Semaphore(settings.max_concurrent_queries),
+        metrics=QueryMetrics(),
     )
     logger.info(
         "LogiSQL API started | env=%s | db=%s | llm=%s | concurrency=%s",

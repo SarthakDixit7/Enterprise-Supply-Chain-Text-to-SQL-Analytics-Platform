@@ -17,6 +17,17 @@ class HealthResponse(BaseModel):
     dialect: str
 
 
+class MetricsResponse(BaseModel):
+    queries_total: int
+    queries_succeeded: int
+    queries_failed: int
+    queries_rejected_busy: int
+    in_flight: int
+    latency_samples: int
+    avg_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+
+
 class OverviewResponse(DatasetOverview):
     """Aggregate dataset snapshot exposed by the API."""
 

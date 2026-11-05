@@ -267,6 +267,7 @@ Response shape (abridged):
 Other endpoints:
 
 - `GET /api/v1/health`
+- `GET /api/v1/metrics` — in-process query counts, in-flight requests, and p95 latency
 - `GET /api/v1/overview?force=false` — cached dataset KPIs used by the UI
 - `GET /api/v1/schema?force=false`
 - `GET /api/v1/examples`
