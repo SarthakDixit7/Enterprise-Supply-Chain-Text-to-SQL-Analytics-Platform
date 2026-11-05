@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -15,10 +16,16 @@ from logisql import __version__
 from logisql.agent.graph import LogiSQLAgent
 from logisql.agent.llm import AnalyticsLLM, GroqAnalyticsLLM, LLMConfigurationError
 from logisql.api.container import AppContainer
-from logisql.api.routes import llm_configuration_error_response, router
+from logisql.api.routes import (
+    ServerBusyError,
+    llm_configuration_error_response,
+    router,
+    server_busy_response,
+)
 from logisql.config import Settings, configure_logging, get_settings
 from logisql.db.engine import create_engine
 from logisql.db.executor import QueryExecutor
+from logisql.db.overview import OverviewService
 from logisql.db.schema import SchemaService
 from logisql.db.seed import ensure_demo_database
 
@@ -43,6 +50,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = create_engine(settings)
     schema_service = SchemaService(engine=engine, settings=settings)
     executor = QueryExecutor(engine=engine, settings=settings)
+    overview_service = OverviewService(
+        executor=executor, allowed_tables=settings.allowed_table_set
+    )
     llm: AnalyticsLLM = app.state.llm_override or GroqAnalyticsLLM(settings)
     agent = LogiSQLAgent(
         settings=settings,
@@ -54,15 +64,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings=settings,
         engine=engine,
         schema_service=schema_service,
+        overview_service=overview_service,
         executor=executor,
         llm=llm,
         agent=agent,
+        query_semaphore=asyncio.Semaphore(settings.max_concurrent_queries),
     )
     logger.info(
-        "LogiSQL API started | env=%s | db=%s | llm=%s",
+        "LogiSQL API started | env=%s | db=%s | llm=%s | concurrency=%s",
         settings.environment,
         executor.dialect,
         settings.groq_model,
+        settings.max_concurrent_queries,
     )
 
     try:
@@ -101,11 +114,13 @@ def create_app(
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
+        started = time.perf_counter()
         incoming = request.headers.get("x-request-id", "")
         request_id = _REQUEST_ID_RE.sub("", incoming)[:64] or str(uuid4())
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time-Ms"] = f"{(time.perf_counter() - started) * 1000:.1f}"
         return response
 
     @app.exception_handler(LLMConfigurationError)
@@ -113,6 +128,10 @@ def create_app(
         request: Request, exc: LLMConfigurationError
     ) -> JSONResponse:
         return llm_configuration_error_response(request, exc)
+
+    @app.exception_handler(ServerBusyError)
+    async def _server_busy_handler(request: Request, exc: ServerBusyError) -> JSONResponse:
+        return server_busy_response(request, exc)
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

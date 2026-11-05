@@ -164,6 +164,9 @@ def _normalize_synthesis_payload(payload: dict[str, Any]) -> dict[str, Any]:
             normalized[field] = str(normalized[field])
 
     chart = normalized.get("chart")
+    if isinstance(chart, str):
+        # Models occasionally emit just the chart type; accept it.
+        chart = {"type": chart.strip().lower()}
     if isinstance(chart, dict):
         chart = dict(chart)
         chart_type = str(chart.get("type") or "none").lower()
@@ -177,8 +180,14 @@ def _normalize_synthesis_payload(payload: dict[str, Any]) -> dict[str, Any]:
         } else "none"
         if chart["type"] == "none":
             chart.update({"x": None, "y": None, "color": None})
+        else:
+            for key in ("x", "y", "color", "title"):
+                if chart.get(key) is not None:
+                    chart[key] = str(chart[key])
         normalized["chart"] = chart
     elif chart in (None, "", "null"):
+        normalized["chart"] = None
+    else:
         normalized["chart"] = None
 
     takeaways = normalized.get("key_takeaways")

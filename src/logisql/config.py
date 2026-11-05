@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 # Make optional observability/tooling variables in `.env` visible to libraries
 # such as LangSmith, not just to pydantic-settings.
@@ -48,6 +49,13 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:8501,http://127.0.0.1:8501"
     api_base_url: str = "http://localhost:8000"
+    max_concurrent_queries: int = Field(default=4, ge=1, le=100)
+    query_queue_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+
+    @field_validator("database_url")
+    @classmethod
+    def _strip_database_url(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("environment")
     @classmethod
@@ -85,9 +93,11 @@ class Settings(BaseSettings):
     def sqlite_path(self) -> Path | None:
         if not self.is_sqlite:
             return None
-        # SQLAlchemy URL forms: sqlite+aiosqlite:///relative.db and ////absolute
-        raw = self.database_url.split(":///", 1)[-1].split("?", 1)[0]
-        return Path(raw).expanduser().resolve()
+        database = make_url(self.database_url).database
+        # In-memory and URI-named databases have no file to seed or create.
+        if not database or database == ":memory:" or database.startswith("file:"):
+            return None
+        return Path(database).expanduser().resolve()
 
 
 @lru_cache(maxsize=1)

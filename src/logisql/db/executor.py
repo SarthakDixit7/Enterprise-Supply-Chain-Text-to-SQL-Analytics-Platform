@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import math
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -32,10 +33,15 @@ class QueryExecutionResult:
 
 
 def _json_value(value: Any) -> Any:
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, (bool, int, str)):
         return value
+    if isinstance(value, float):
+        # JSON has no representation for NaN/Infinity; Starlette's encoder
+        # rejects them, which would turn a successful query into a 500.
+        return value if math.isfinite(value) else None
     if isinstance(value, Decimal):
-        return float(value)
+        as_float = float(value)
+        return as_float if math.isfinite(as_float) else None
     if isinstance(value, (datetime, date, dt_time)):
         return value.isoformat()
     if isinstance(value, UUID):

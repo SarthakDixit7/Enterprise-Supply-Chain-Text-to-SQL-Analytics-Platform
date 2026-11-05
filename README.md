@@ -25,6 +25,8 @@ Question -> Schema context -> Groq/Llama SQL -> SQLGlot AST guard -> Execute
 | Dynamic context | Schema introspector with PK/FK awareness and TTL cache |
 | Self-correction | Validation and database errors are fed back to the model (max 3 retries) |
 | Execution controls | Read-only DB transaction, statement timeout, row cap, truncated-result flag |
+| Dataset snapshot | Cached `/overview` KPIs (orders, delivery performance, item value) shown in the UI |
+| Backpressure | Bounded concurrent queries with a queue timeout and `429 Retry-After` |
 | Analytics UX | **FastAPI + asyncio** backend, **Streamlit** frontend, Plotly charts |
 | Observability | LangSmith tracing, per-node timings, attempt trail, request IDs |
 | Zero-setup demo | Synthetic Olist-like SQLite database seeded on first API boot |
@@ -217,6 +219,8 @@ All settings are environment variables (see [`.env.example`](.env.example)).
 | `MAX_ROW_LIMIT` | `1000` | Hard API cap |
 | `QUERY_TIMEOUT_MS` | `15000` | PostgreSQL statement timeout |
 | `SCHEMA_CACHE_TTL_SECONDS` | `300` | Schema introspection cache |
+| `MAX_CONCURRENT_QUERIES` | `4` | In-process LLM query workers |
+| `QUERY_QUEUE_TIMEOUT_SECONDS` | `30` | Wait before returning `429` |
 | `CORS_ORIGINS` | localhost UI | Comma-separated browser origins |
 | `API_BASE_URL` | `http://localhost:8000` | URL used by Streamlit |
 | `LANGCHAIN_TRACING_V2` | `false` | Enable LangSmith |
@@ -263,8 +267,14 @@ Response shape (abridged):
 Other endpoints:
 
 - `GET /api/v1/health`
+- `GET /api/v1/overview?force=false` — cached dataset KPIs used by the UI
 - `GET /api/v1/schema?force=false`
 - `GET /api/v1/examples`
+
+`/api/v1/query` is protected by an in-process semaphore (`MAX_CONCURRENT_QUERIES`).
+When every worker is busy past `QUERY_QUEUE_TIMEOUT_SECONDS`, the API returns
+`429 Too Many Requests` with a `Retry-After` header instead of exhausting the
+Groq quota or the event loop.
 
 ---
 
@@ -277,11 +287,13 @@ This is a reference implementation, not a claim of absolute security. It uses de
 3. **Single statement only** — stacked queries are rejected.
 4. **Table allowlist** — only configured Olist tables can be referenced.
 5. **Schema blocking** — `information_schema`, `pg_catalog`, `auth`, `storage`, etc.
-6. **Dangerous function denylist** — `pg_sleep`, file I/O, `dblink`, backend control functions.
+6. **Dangerous function denylist** — `pg_sleep`, file I/O, `dblink`, backend control functions, sequence mutation (`nextval`/`setval`), notification and large-object helpers.
 7. **Read-only transaction** — PostgreSQL `SET TRANSACTION READ ONLY`; SQLite `PRAGMA query_only`.
 8. **Statement timeout + row cap** — prevents runaway or unbounded reads.
 9. **Validated chart spec** — the model cannot inject arbitrary Plotly JSON or HTML.
 10. **Secrets stay server-side** — the Streamlit app never sees the database or Groq key.
+11. **Non-finite values are sanitized** — `NaN`/`Infinity` cannot break JSON serialization.
+12. **Bounded concurrency** — expensive LLM runs queue behind a semaphore.
 
 For a public deployment, also add authentication, per-user rate limiting, query cost budgets, and network-level egress controls. Use a dedicated read-only Supabase role rather than the service role.
 
@@ -300,6 +312,7 @@ LANGCHAIN_PROJECT=logisql-agent
 Each request gets:
 
 - a request ID in the response and `X-Request-ID` header,
+- an `X-Process-Time-Ms` latency header,
 - a `run_name` and metadata for LangSmith,
 - per-node latency in `node_timings`,
 - an `attempts` trail containing generated SQL, validation failures, execution failures, and repairs.
@@ -315,11 +328,13 @@ ruff check .
 
 The suite covers:
 
-- safe/unsafe SQL parsing and allowlists,
+- safe/unsafe SQL parsing, allowlists, and the dangerous-function denylist,
 - schema introspection against SQLite,
-- chart inference and Plotly generation,
+- chart inference and Plotly generation (bar, line, pie, multi-series),
 - the full LangGraph repair loop with a fake LLM,
-- FastAPI health/schema/query endpoints.
+- FastAPI health/schema/overview/query endpoints and latency headers,
+- execution sanitization, demo seeding idempotence, loader normalization,
+- configuration parsing and the query queue limiter.
 
 ---
 
@@ -374,13 +389,14 @@ For Supabase, set `DATABASE_URL` in your shell or `.env` before `docker compose 
 │   │   ├── state.py               # Typed agent state
 │   │   └── synthesis.py           # Deterministic fallback narrative
 │   ├── api/                       # FastAPI app, routes, schemas
-│   ├── db/                        # engine, introspector, executor, seed
+│   ├── db/                        # engine, introspector, executor, overview, seed
 │   ├── ingest/loader.py           # Supabase CSV ingestion
 │   └── config.py                  # Pydantic settings
 ├── tests/
 ├── Dockerfile.api
 ├── Dockerfile.ui
-└── docker-compose.yml
+├── docker-compose.yml
+└── .dockerignore
 ```
 
 ---
@@ -389,7 +405,7 @@ For Supabase, set `DATABASE_URL` in your shell or `.env` before `docker compose 
 
 - Olist has no customer dimension table, so customer geography is not available. The agent uses **seller state** in geographic examples.
 - The local demo dataset is synthetic; use Supabase + the Kaggle CSVs for real findings.
-- The reference app has no auth or rate limiting. Add both before exposing it publicly.
+- The reference app has no authentication; it has an in-process concurrency limit but no per-user rate limiting. Add both (plus a distributed limiter) before exposing it publicly.
 - The chart builder intentionally supports a small, safe set: bar, line, area, scatter, pie.
 - Good production extensions: query result caching, per-user history, schema comments/descriptions, semantic column aliases, evaluation harness with golden SQL, and a read-only Supabase role.
 
@@ -402,8 +418,9 @@ For Supabase, set `DATABASE_URL` in your shell or `.env` before `docker compose 
 - Delivered an asyncio FastAPI backend and Streamlit analytics UI with request tracing, per-node latency, retry audit trails, and validated Plotly visualizations.
 - Designed dynamic `information_schema` introspection with PK/FK discovery and TTL caching, keeping prompts aligned with the live Supabase schema.
 - Added an Olist ingestion pipeline with FK validation, bulk upserts, timestamp normalization, and a zero-setup synthetic demo mode.
+- Hardened the API with cached dataset KPI overviews, bounded query concurrency, non-finite result sanitization, and a broader dangerous-function denylist.
 - Instrumented every request with LangSmith traces and structured execution metadata for debugging and evaluation.
 
 ---
 
-MIT License. See [`LICENSE`](LICENSE).
+License terms are documented in [`LICENSE`](LICENSE).

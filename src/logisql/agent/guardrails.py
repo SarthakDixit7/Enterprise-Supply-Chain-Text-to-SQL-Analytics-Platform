@@ -45,12 +45,18 @@ _BLOCKED_NODE_NAMES = {
 _BLOCKED_FUNCTIONS = {
     "dblink",
     "dblink_exec",
+    "edit",
+    "fts3_tokenizer",
+    "load_extension",
     "lo_export",
     "lo_import",
+    "lo_unlink",
+    "nextval",
     "pg_cancel_backend",
     "pg_create_restore_point",
     "pg_drop_replication_slot",
     "pg_ls_dir",
+    "pg_notify",
     "pg_promote",
     "pg_read_binary_file",
     "pg_read_file",
@@ -64,7 +70,10 @@ _BLOCKED_FUNCTIONS = {
     "pg_stop_backup",
     "pg_switch_wal",
     "pg_terminate_backend",
+    "readfile",
     "set_config",
+    "setval",
+    "writefile",
 }
 
 _BLOCKED_SCHEMAS = {

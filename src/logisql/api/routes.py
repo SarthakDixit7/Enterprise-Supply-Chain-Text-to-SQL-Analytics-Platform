@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Query, Request
@@ -11,6 +12,7 @@ from logisql.api.schemas import (
     ExampleQuestion,
     ExamplesResponse,
     HealthResponse,
+    OverviewResponse,
     QueryRequest,
     QueryResponse,
     SchemaResponse,
@@ -19,6 +21,11 @@ from logisql.db.engine import ping_database
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class ServerBusyError(RuntimeError):
+    """Raised when every query worker is occupied past the queue timeout."""
+
 
 EXAMPLES = [
     ExampleQuestion(
@@ -77,6 +84,17 @@ def _container(request: Request) -> AppContainer:
     return container
 
 
+async def _acquire_slot(semaphore: asyncio.Semaphore, timeout_seconds: float) -> bool:
+    """Wait for an execution slot without cancelling an in-flight query."""
+
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            await semaphore.acquire()
+    except TimeoutError:
+        return False
+    return True
+
+
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health(request: Request) -> HealthResponse:
     container = _container(request)
@@ -105,6 +123,13 @@ async def schema(request: Request, force: bool = Query(default=False)) -> Schema
     )
 
 
+@router.get("/overview", response_model=OverviewResponse, tags=["schema"])
+async def overview(request: Request, force: bool = Query(default=False)) -> OverviewResponse:
+    container = _container(request)
+    snapshot = await container.overview_service.get(force=force)
+    return OverviewResponse(**snapshot.model_dump())
+
+
 @router.get("/examples", response_model=ExamplesResponse, tags=["schema"])
 async def examples() -> ExamplesResponse:
     return ExamplesResponse(examples=EXAMPLES)
@@ -120,11 +145,23 @@ async def query(request: Request, payload: QueryRequest) -> QueryResponse:
             "GROQ_API_KEY is not configured on the API server. Add it to .env and restart."
         )
 
-    result = await container.agent.run(
-        question=payload.question,
-        request_id=request_id,
-        row_limit=payload.row_limit,
+    acquired = await _acquire_slot(
+        container.query_semaphore,
+        container.settings.query_queue_timeout_seconds,
     )
+    if not acquired:
+        raise ServerBusyError(
+            "The analytics engine is at capacity. Retry in a few seconds."
+        )
+    try:
+        result = await container.agent.run(
+            question=payload.question,
+            request_id=request_id,
+            row_limit=payload.row_limit,
+        )
+    finally:
+        container.query_semaphore.release()
+
     return QueryResponse(
         request_id=request_id,
         status=result.get("status", "failed"),
@@ -162,4 +199,15 @@ def llm_configuration_error_response(request: Request, exc: LLMConfigurationErro
             "detail": str(exc),
             "request_id": getattr(request.state, "request_id", None),
         },
+    )
+
+
+def server_busy_response(request: Request, exc: ServerBusyError) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": str(exc),
+            "request_id": getattr(request.state, "request_id", None),
+        },
+        headers={"Retry-After": "5"},
     )

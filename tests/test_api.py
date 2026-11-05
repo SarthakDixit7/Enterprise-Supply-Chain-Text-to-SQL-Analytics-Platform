@@ -51,10 +51,34 @@ def test_query_endpoint(client: TestClient) -> None:
     assert payload["status"] == "success"
     assert payload["request_id"] == "client-request-123"
     assert response.headers["X-Request-ID"] == "client-request-123"
+    assert float(response.headers["X-Process-Time-Ms"]) >= 0
     assert payload["row_count"] > 0
     assert payload["chart"] is not None
     assert payload["model"] == "llama-3.3-70b-versatile"
     assert payload["schema_tables"] == 5
+
+
+def test_overview_endpoint(client: TestClient) -> None:
+    response = client.get("/api/v1/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["orders"] == 120
+    assert payload["delivered_orders"] > 0
+    assert payload["item_count"] > 0
+    assert payload["sellers"] == 40
+    assert payload["products"] == 160
+    assert payload["gross_item_value"] > 0
+    assert payload["on_time_rate"] is not None
+    assert 0.0 <= payload["on_time_rate"] <= 1.0
+    assert payload["first_order_at"]
+    assert payload["last_order_at"]
+
+
+def test_overview_endpoint_can_force_refresh(client: TestClient) -> None:
+    assert client.get("/api/v1/overview").status_code == 200
+    refreshed = client.get("/api/v1/overview", params={"force": True})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["orders"] == 120
 
 
 def test_query_rejects_short_question(client: TestClient) -> None:

@@ -28,3 +28,13 @@ async def test_executor_caps_rows_and_flags_truncation(executor: QueryExecutor) 
 async def test_executor_is_read_only(executor: QueryExecutor) -> None:
     with pytest.raises(QueryExecutionError):
         await executor.execute("DELETE FROM orders")
+
+
+async def test_executor_sanitizes_non_finite_floats(executor: QueryExecutor) -> None:
+    result = await executor.execute(
+        "SELECT 1e400 AS too_big, -1e400 AS too_small, 0.0/0.0 AS nan_value",
+        row_limit=10,
+    )
+    assert result.rows[0]["too_big"] is None
+    assert result.rows[0]["too_small"] is None
+    assert result.rows[0]["nan_value"] is None

@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "logisql-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Enterprise supply-chain text-to-SQL analytics agent with LangGraph, Groq, SQLGlot, and Supabase/PostgreSQL."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
-license = { text = "MIT" }
+license = { text = "See LICENSE" }
 authors = [{ name = "Sarthak Dixit" }]
 keywords = ["text-to-sql", "langgraph", "groq", "supabase", "olist", "analytics"]
 dependencies = [

@@ -63,6 +63,13 @@ def test_accepts_qualified_public_table(guard: SQLGuardrail) -> None:
         "SELECT * FROM customers",
         "SET statement_timeout = 0",
         "CALL some_procedure()",
+        "SELECT nextval('orders_seq')",
+        "SELECT setval('orders_seq', 100)",
+        "SELECT load_extension('evil')",
+        "SELECT readfile('/etc/passwd')",
+        "SELECT writefile('/tmp/out', 'data')",
+        "SELECT pg_notify('channel', 'payload')",
+        "SELECT lo_unlink(1234)",
     ],
 )
 def test_rejects_unsafe_sql(guard: SQLGuardrail, sql: str) -> None:

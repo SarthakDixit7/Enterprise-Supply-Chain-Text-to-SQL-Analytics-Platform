@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from logisql.agent.llm import LLMResponseError, clean_sql_response, parse_json_response
+from logisql.agent.llm import (
+    LLMResponseError,
+    SynthesisOutput,
+    _normalize_synthesis_payload,
+    clean_sql_response,
+    parse_json_response,
+)
 
 
 def test_clean_sql_removes_markdown_fence() -> None:
@@ -32,3 +38,30 @@ def test_parse_json_response_rejects_non_json() -> None:
     except LLMResponseError:
         return
     raise AssertionError("Expected LLMResponseError")
+
+
+def test_normalize_accepts_chart_type_string() -> None:
+    payload = _normalize_synthesis_payload({"headline": "H", "chart": "Bar"})
+    output = SynthesisOutput.model_validate(payload)
+    assert output.chart is not None
+    assert output.chart.type == "bar"
+
+
+def test_normalize_coerces_chart_columns_and_takeaways() -> None:
+    payload = _normalize_synthesis_payload(
+        {
+            "headline": "H",
+            "chart": {"type": "line", "x": 1, "y": "value"},
+            "key_takeaways": "Only one takeaway",
+        }
+    )
+    output = SynthesisOutput.model_validate(payload)
+    assert output.chart is not None
+    assert output.chart.x == "1"
+    assert output.key_takeaways == ["Only one takeaway"]
+
+
+def test_normalize_handles_unknown_chart_shape() -> None:
+    payload = _normalize_synthesis_payload({"headline": "H", "chart": ["bar"]})
+    output = SynthesisOutput.model_validate(payload)
+    assert output.chart is None

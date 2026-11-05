@@ -1,0 +1,22 @@
+# Keep build contexts small and secrets out of images.
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+data
+.env
+.env.*
+!.env.example
+tests
+scripts
+docs
+*.db
+*.db-*
+*.sqlite

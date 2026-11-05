@@ -7,7 +7,8 @@ from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import create_engine, func, select
-from sqlalchemy.engine import Engine
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import Connection, Engine
 
 from logisql.config import Settings
 from logisql.db.models import metadata, order_items, order_payments, orders, products, sellers
@@ -207,6 +208,15 @@ def _create_demo_data(order_count: int, seed: int = 42) -> dict[str, list[dict]]
     }
 
 
+def _table_counts(connection: Connection) -> dict[str, int]:
+    return {
+        table.name: int(
+            connection.execute(select(func.count()).select_from(table)).scalar_one()
+        )
+        for table in metadata.sorted_tables
+    }
+
+
 def seed_demo_database(
     database_path: Path,
     *,
@@ -228,14 +238,7 @@ def seed_demo_database(
 
             existing = connection.execute(select(func.count()).select_from(orders)).scalar_one()
             if existing and not force:
-                return {
-                    "orders": int(existing),
-                    "order_items": int(
-                        connection.execute(
-                            select(func.count()).select_from(order_items)
-                        ).scalar_one()
-                    ),
-                }
+                return _table_counts(connection)
 
         data = _create_demo_data(order_count)
         with engine.begin() as connection:
@@ -246,16 +249,12 @@ def seed_demo_database(
                 (order_items, data["order_items"]),
                 (order_payments, data["order_payments"]),
             ):
+                statement = sqlite_insert(table).on_conflict_do_nothing()
                 for start in range(0, len(rows), chunk_size):
-                    connection.execute(table.insert(), rows[start : start + chunk_size])
+                    connection.execute(statement, rows[start : start + chunk_size])
 
         with engine.connect() as connection:
-            return {
-                table.name: int(
-                    connection.execute(select(func.count()).select_from(table)).scalar_one()
-                )
-                for table in metadata.sorted_tables
-            }
+            return _table_counts(connection)
     finally:
         engine.dispose()
 

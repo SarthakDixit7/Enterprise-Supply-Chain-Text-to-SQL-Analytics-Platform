@@ -67,3 +67,33 @@ def test_no_rows_returns_no_chart() -> None:
     chart, warning = build_chart(rows=[], columns=COLUMNS, requested=None)
     assert chart is None
     assert warning is None
+
+
+def test_line_chart_sorts_x_values() -> None:
+    rows = [
+        {"month": "2018-02-01", "revenue": 2.0},
+        {"month": "2018-01-01", "revenue": 1.0},
+    ]
+    chart, warning = build_chart(
+        rows=rows,
+        columns=["month", "revenue"],
+        requested=ChartSpec(type="line", x="month", y="revenue"),
+    )
+    assert warning is None
+    assert chart is not None
+    assert chart["data"][0]["x"] == ["2018-01-01", "2018-02-01"]
+
+
+def test_color_column_creates_multiple_series() -> None:
+    rows = [
+        {"region": "south", "status": "delivered", "orders": 2},
+        {"region": "north", "status": "delivered", "orders": 3},
+    ]
+    chart, warning = build_chart(
+        rows=rows,
+        columns=["region", "status", "orders"],
+        requested=ChartSpec(type="bar", x="status", y="orders", color="region"),
+    )
+    assert warning is None
+    assert chart is not None
+    assert len(chart["data"]) == 2

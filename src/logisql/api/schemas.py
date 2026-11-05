@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from logisql.db.overview import DatasetOverview
 from logisql.db.schema import TableInfo
 
 
@@ -14,6 +15,10 @@ class HealthResponse(BaseModel):
     llm_configured: bool
     model: str
     dialect: str
+
+
+class OverviewResponse(DatasetOverview):
+    """Aggregate dataset snapshot exposed by the API."""
 
 
 class SchemaResponse(BaseModel):

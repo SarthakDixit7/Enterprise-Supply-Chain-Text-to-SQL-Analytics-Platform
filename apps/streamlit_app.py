@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv(override=False)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+MAX_HISTORY_ITEMS = 12
 
 st.set_page_config(
     page_title="LogiSQL-Agent",
@@ -180,6 +181,16 @@ def fetch_examples(base_url: str) -> list[dict[str, str]]:
         return []
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_overview(base_url: str) -> dict[str, Any] | None:
+    try:
+        response = httpx.get(f"{base_url}/api/v1/overview", timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return None
+
+
 def run_query(question: str, row_limit: int) -> dict[str, Any]:
     try:
         response = httpx.post(
@@ -204,6 +215,39 @@ def _metric(label: str, value: str) -> None:
         f'<div class="metric-card"><div class="label">{label}</div>'
         f'<div class="value">{value}</div></div>',
         unsafe_allow_html=True,
+    )
+
+
+def _compact_currency(value: float) -> str:
+    if value >= 1_000_000_000:
+        return f"R$ {value / 1_000_000_000:.2f}B"
+    if value >= 1_000_000:
+        return f"R$ {value / 1_000_000:.2f}M"
+    if value >= 1_000:
+        return f"R$ {value / 1_000:.1f}K"
+    return f"R$ {value:,.0f}"
+
+
+def render_overview(overview: dict[str, Any]) -> None:
+    st.markdown('<div class="section-label">Dataset snapshot</div>', unsafe_allow_html=True)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        _metric("Orders", f"{int(overview.get('orders') or 0):,}")
+    with col2:
+        _metric("Delivered", f"{int(overview.get('delivered_orders') or 0):,}")
+    with col3:
+        on_time = overview.get("on_time_rate")
+        _metric("On-time delivery", f"{on_time * 100:.1f}%" if on_time is not None else "—")
+    with col4:
+        _metric("Item value", _compact_currency(float(overview.get("gross_item_value") or 0)))
+
+    start = str(overview.get("first_order_at") or "")[:10]
+    end = str(overview.get("last_order_at") or "")[:10]
+    span = f"{start} → {end}" if start and end else "date range unavailable"
+    st.caption(
+        f"{int(overview.get('sellers') or 0):,} sellers · "
+        f"{int(overview.get('products') or 0):,} products · "
+        f"{int(overview.get('late_orders') or 0):,} late delivered orders · {span}"
     )
 
 
@@ -319,8 +363,18 @@ def render_history() -> None:
             if item.get("error"):
                 st.error(item["error"])
                 st.caption(f"Backend: {API_BASE_URL}")
-            else:
+            elif item.get("response"):
                 render_result(item["response"])
+            else:
+                st.caption("No response was recorded for this question.")
+
+
+def _remember(question: str, response: dict[str, Any] | None, error: str | None) -> None:
+    st.session_state.history.append(
+        {"question": question, "response": response, "error": error}
+    )
+    # Keep the transcript bounded so reruns stay fast on long sessions.
+    st.session_state.history = st.session_state.history[-MAX_HISTORY_ITEMS:]
 
 
 def sidebar(health: dict[str, Any] | None) -> int:
@@ -439,6 +493,10 @@ def main() -> None:
             "`uvicorn logisql.api.main:app --reload` and refresh."
         )
 
+    overview = fetch_overview(API_BASE_URL)
+    if overview:
+        render_overview(overview)
+
     if not st.session_state.history:
         examples = fetch_examples(API_BASE_URL)
         if examples:
@@ -461,7 +519,9 @@ def main() -> None:
         disabled=not health,
     )
     if prompt:
-        st.session_state.pending_question = prompt
+        cleaned_prompt = prompt.strip()
+        if cleaned_prompt:
+            st.session_state.pending_question = cleaned_prompt
 
     if st.session_state.pending_question:
         question = st.session_state.pending_question
@@ -472,17 +532,14 @@ def main() -> None:
             with st.spinner("Planning SQL · validating guardrails · executing · synthesizing"):
                 try:
                     response = run_query(question, row_limit)
-                    st.session_state.history.append(
-                        {"question": question, "response": response, "error": None}
-                    )
+                    _remember(question, response, None)
                     render_result(response)
                 except APIError as exc:
                     message = str(exc)
-                    st.session_state.history.append(
-                        {"question": question, "response": None, "error": message}
-                    )
+                    _remember(question, None, message)
                     st.error(message)
             fetch_health.clear()
+            fetch_overview.clear()
 
 
 if __name__ == "__main__":
