@@ -10,6 +10,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
+from logisql.export import sanitize_csv_cell
+
 load_dotenv(override=False)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
@@ -328,12 +330,15 @@ def render_result(response: dict[str, Any]) -> None:
     if rows:
         st.markdown('<div class="section-label">Result set</div>', unsafe_allow_html=True)
         frame = pd.DataFrame(rows, columns=columns)
+        export_frame = frame.copy()
+        for column in export_frame.columns:
+            export_frame[column] = export_frame[column].map(sanitize_csv_cell)
         st.dataframe(frame, width="stretch", hide_index=True, height=min(420, 42 + 35 * len(frame)))
         if response.get("truncated"):
             st.caption("Result truncated by the configured row limit.")
         st.download_button(
             "Download CSV",
-            data=frame.to_csv(index=False).encode("utf-8"),
+            data=export_frame.to_csv(index=False).encode("utf-8"),
             file_name=f"logisql_{response.get('request_id', 'result')[:8]}.csv",
             mime="text/csv",
             key=f"download_{response.get('request_id', 'result')}",
