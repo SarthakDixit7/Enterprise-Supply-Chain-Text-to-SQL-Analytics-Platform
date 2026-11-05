@@ -40,6 +40,38 @@ def test_examples_endpoint(client: TestClient) -> None:
     assert len(response.json()["examples"]) >= 5
 
 
+def test_validate_accepts_read_only_select(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/validate",
+        json={"sql": "SELECT COUNT(*) AS order_count FROM orders"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is True
+    assert payload["error"] is None
+    assert "orders" in payload["normalized_sql"]
+
+
+def test_validate_blocks_mutation(client: TestClient) -> None:
+    response = client.post("/api/v1/validate", json={"sql": "DELETE FROM orders"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is False
+    assert payload["normalized_sql"] is None
+    assert "read-only" in payload["error"].lower()
+
+
+def test_validate_blocks_unknown_table(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/validate",
+        json={"sql": "SELECT * FROM secret_users"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is False
+    assert "not allowlisted" in payload["error"]
+
+
 def test_query_endpoint(client: TestClient) -> None:
     response = client.post(
         "/api/v1/query",

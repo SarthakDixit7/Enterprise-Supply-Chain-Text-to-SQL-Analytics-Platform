@@ -85,6 +85,16 @@ class QueryResponse(BaseModel):
     error: str | None = None
 
 
+class ValidateRequest(BaseModel):
+    sql: str = Field(min_length=1, max_length=20_000)
+
+
+class ValidateResponse(BaseModel):
+    allowed: bool
+    normalized_sql: str | None = None
+    error: str | None = None
+
+
 class ExampleQuestion(BaseModel):
     category: str
     question: str

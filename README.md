@@ -270,6 +270,7 @@ Other endpoints:
 - `GET /api/v1/overview?force=false` — cached dataset KPIs used by the UI
 - `GET /api/v1/schema?force=false`
 - `GET /api/v1/examples`
+- `POST /api/v1/validate` — run a SQL string through the guardrail without executing it
 
 `/api/v1/query` is protected by an in-process semaphore (`MAX_CONCURRENT_QUERIES`).
 When every worker is busy past `QUERY_QUEUE_TIMEOUT_SECONDS`, the API returns

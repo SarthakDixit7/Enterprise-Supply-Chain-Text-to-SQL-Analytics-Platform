@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
+from logisql.agent.guardrails import GuardrailError
 from logisql.agent.llm import LLMConfigurationError
 from logisql.api.container import AppContainer
 from logisql.api.schemas import (
@@ -16,6 +17,8 @@ from logisql.api.schemas import (
     QueryRequest,
     QueryResponse,
     SchemaResponse,
+    ValidateRequest,
+    ValidateResponse,
 )
 from logisql.db.engine import ping_database
 
@@ -133,6 +136,18 @@ async def overview(request: Request, force: bool = Query(default=False)) -> Over
 @router.get("/examples", response_model=ExamplesResponse, tags=["schema"])
 async def examples() -> ExamplesResponse:
     return ExamplesResponse(examples=EXAMPLES)
+
+
+@router.post("/validate", response_model=ValidateResponse, tags=["agent"])
+async def validate(request: Request, payload: ValidateRequest) -> ValidateResponse:
+    """Check a SQL statement against the read-only guardrail without executing it."""
+
+    container = _container(request)
+    try:
+        normalized = container.agent.guardrail.validate(payload.sql)
+    except GuardrailError as exc:
+        return ValidateResponse(allowed=False, error=str(exc))
+    return ValidateResponse(allowed=True, normalized_sql=normalized)
 
 
 @router.post("/query", response_model=QueryResponse, tags=["agent"])
