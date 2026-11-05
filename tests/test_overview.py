@@ -31,6 +31,7 @@ async def test_overview_service_handles_strict_allowlist(executor: QueryExecutor
     assert snapshot.products == 0
     assert snapshot.item_count == 0
     assert snapshot.gross_item_value == 0.0
+    assert snapshot.measurable_delivered > 0
     assert snapshot.first_order_at
 
 

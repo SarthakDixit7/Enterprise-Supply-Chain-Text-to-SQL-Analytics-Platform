@@ -20,6 +20,47 @@ _PALETTE = [
     "#dc2626",
 ]
 
+# Numeric-looking columns that are usually identifiers or ordinals, not
+# measures. Charting them produces noise such as "Rank by category".
+_NON_MEASURE_NAMES = {
+    "id",
+    "index",
+    "position",
+    "rank",
+    "rn",
+    "row_number",
+    "year",
+    "month",
+    "day",
+}
+_NON_MEASURE_SUFFIXES = ("_id", "_key", "_rank", "_index", "_position")
+_MEASURE_HINTS = (
+    "amount",
+    "avg",
+    "cost",
+    "count",
+    "freight",
+    "items",
+    "mean",
+    "orders",
+    "pct",
+    "percent",
+    "price",
+    "profit",
+    "qty",
+    "quantity",
+    "rate",
+    "revenue",
+    "sales",
+    "score",
+    "share",
+    "sum",
+    "total",
+    "value",
+    "volume",
+    "weight",
+)
+
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
@@ -28,6 +69,25 @@ def _is_number(value: Any) -> bool:
 def _is_numeric_column(rows: list[dict[str, Any]], column: str) -> bool:
     values = [row.get(column) for row in rows if row.get(column) is not None]
     return bool(values) and all(_is_number(value) for value in values)
+
+
+def _measure_columns(columns: list[str], rows: list[dict[str, Any]]) -> list[str]:
+    """Order numeric columns so real measures beat ids, ranks, and ordinals."""
+
+    order = {column: index for index, column in enumerate(columns)}
+    numeric = [column for column in columns if _is_numeric_column(rows, column)]
+
+    def score(column: str) -> int:
+        name = column.lower()
+        value = 0
+        if name in _NON_MEASURE_NAMES or name.endswith(_NON_MEASURE_SUFFIXES):
+            value -= 100
+        if any(hint in name for hint in _MEASURE_HINTS):
+            value += 10
+        return value
+
+    return sorted(numeric, key=lambda column: (-score(column), order[column]))
+
 
 
 def _is_temporal_column(rows: list[dict[str, Any]], column: str) -> bool:
@@ -55,7 +115,7 @@ def infer_chart_spec(
     if not rows or not columns:
         return None
 
-    numeric = [column for column in columns if _is_numeric_column(rows, column)]
+    numeric = _measure_columns(columns=columns, rows=rows)
     temporal = [column for column in columns if _is_temporal_column(rows, column)]
     categorical = [column for column in columns if column not in numeric and column not in temporal]
 

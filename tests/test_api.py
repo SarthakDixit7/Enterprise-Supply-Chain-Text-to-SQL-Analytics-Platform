@@ -68,6 +68,7 @@ def test_overview_endpoint(client: TestClient) -> None:
     assert payload["sellers"] == 40
     assert payload["products"] == 160
     assert payload["gross_item_value"] > 0
+    assert payload["measurable_delivered"] >= payload["late_orders"]
     assert payload["on_time_rate"] is not None
     assert 0.0 <= payload["on_time_rate"] <= 1.0
     assert payload["first_order_at"]

@@ -19,6 +19,11 @@ _ORDERS_AGGREGATES = [
         AND order_estimated_delivery_date IS NOT NULL
         AND order_delivered_customer_date > order_estimated_delivery_date
     ) AS late_orders""",
+    """(SELECT COUNT(*) FROM orders
+      WHERE order_status = 'delivered'
+        AND order_delivered_customer_date IS NOT NULL
+        AND order_estimated_delivery_date IS NOT NULL
+    ) AS measurable_delivered""",
     "(SELECT MIN(order_purchase_timestamp) FROM orders) AS first_order_at",
     "(SELECT MAX(order_purchase_timestamp) FROM orders) AS last_order_at",
 ]
@@ -53,6 +58,7 @@ class DatasetOverview(BaseModel):
     orders: int = 0
     delivered_orders: int = 0
     late_orders: int = 0
+    measurable_delivered: int = 0
     on_time_rate: float | None = None
     item_count: int = 0
     sellers: int = 0
@@ -103,12 +109,14 @@ class OverviewService:
         orders = int(row.get("orders") or 0)
         delivered = int(row.get("delivered_orders") or 0)
         late = int(row.get("late_orders") or 0)
-        on_time = round((delivered - late) / delivered, 4) if delivered else None
+        measurable = int(row.get("measurable_delivered") or 0)
+        on_time = round((measurable - late) / measurable, 4) if measurable else None
 
         return DatasetOverview(
             orders=orders,
             delivered_orders=delivered,
             late_orders=late,
+            measurable_delivered=measurable,
             on_time_rate=on_time,
             item_count=int(row.get("item_count") or 0),
             sellers=int(row.get("sellers") or 0),

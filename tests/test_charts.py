@@ -69,6 +69,29 @@ def test_no_rows_returns_no_chart() -> None:
     assert warning is None
 
 
+def test_inference_prefers_measures_over_rank() -> None:
+    rows = [
+        {"rank": 1, "product_category": "health_beauty", "revenue": 120.0},
+        {"rank": 2, "product_category": "sports_leisure", "revenue": 80.0},
+    ]
+    spec = infer_chart_spec(
+        columns=["rank", "product_category", "revenue"], rows=rows
+    )
+    assert spec is not None
+    assert spec.type == "bar"
+    assert spec.y == "revenue"
+
+
+def test_inference_skips_identifier_columns() -> None:
+    rows = [
+        {"order_id": 1001, "status": "delivered", "order_count": 4},
+        {"order_id": 1002, "status": "shipped", "order_count": 2},
+    ]
+    spec = infer_chart_spec(columns=["order_id", "status", "order_count"], rows=rows)
+    assert spec is not None
+    assert spec.y == "order_count"
+
+
 def test_line_chart_sorts_x_values() -> None:
     rows = [
         {"month": "2018-02-01", "revenue": 2.0},

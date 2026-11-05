@@ -196,7 +196,7 @@ def run_query(question: str, row_limit: int) -> dict[str, Any]:
         response = httpx.post(
             f"{API_BASE_URL}/api/v1/query",
             json={"question": question, "row_limit": row_limit},
-            timeout=180,
+            timeout=360,
         )
     except httpx.RequestError as exc:
         raise APIError(f"Could not reach the FastAPI backend at {API_BASE_URL}.") from exc
@@ -247,7 +247,8 @@ def render_overview(overview: dict[str, Any]) -> None:
     st.caption(
         f"{int(overview.get('sellers') or 0):,} sellers · "
         f"{int(overview.get('products') or 0):,} products · "
-        f"{int(overview.get('late_orders') or 0):,} late delivered orders · {span}"
+        f"{int(overview.get('late_orders') or 0):,} late of "
+        f"{int(overview.get('measurable_delivered') or 0):,} measured deliveries · {span}"
     )
 
 
