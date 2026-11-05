@@ -1,0 +1,50 @@
+[
+  {
+    "id": "orders_by_status",
+    "question": "How many orders are there by status?",
+    "required_tables": ["orders"],
+    "required_columns": ["order_status"]
+  },
+  {
+    "id": "revenue_by_category",
+    "question": "Which product categories generated the most item revenue from delivered orders in 2018? Show the top 10.",
+    "required_tables": ["orders", "order_items", "products"],
+    "required_columns": ["product_category_name", "price", "freight_value"]
+  },
+  {
+    "id": "late_delivery_rate",
+    "question": "What share of delivered orders arrived after the estimated delivery date?",
+    "required_tables": ["orders"],
+    "required_columns": ["order_delivered_customer_date", "order_estimated_delivery_date"]
+  },
+  {
+    "id": "seller_states",
+    "question": "Which seller states have the longest average delivery time in days for delivered orders? Show states with at least 20 delivered orders.",
+    "required_tables": ["orders", "order_items", "sellers"],
+    "required_columns": ["seller_state"]
+  },
+  {
+    "id": "payment_mix",
+    "question": "Which payment types have the highest average order value?",
+    "required_tables": ["order_payments"],
+    "required_columns": ["payment_type", "payment_value"]
+  },
+  {
+    "id": "monthly_trend",
+    "question": "How did monthly order volume and total freight value trend between January 2017 and August 2018?",
+    "required_tables": ["orders", "order_items"],
+    "required_columns": ["order_purchase_timestamp", "freight_value"]
+  },
+  {
+    "id": "freight_ratio",
+    "question": "What are the top 10 product categories by average freight cost as a percentage of item price?",
+    "required_tables": ["order_items", "products"],
+    "required_columns": ["product_category_name", "price", "freight_value"]
+  },
+  {
+    "id": "top_sellers",
+    "question": "Which sellers generated the most item revenue? Show the top 10.",
+    "required_tables": ["order_items", "sellers"],
+    "required_columns": ["seller_id", "price"]
+  }
+]

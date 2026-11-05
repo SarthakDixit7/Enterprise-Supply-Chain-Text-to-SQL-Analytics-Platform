@@ -278,6 +278,19 @@ When every worker is busy past `QUERY_QUEUE_TIMEOUT_SECONDS`, the API returns
 `429 Too Many Requests` with a `Retry-After` header instead of exhausting the
 Groq quota or the event loop.
 
+### Golden-SQL evaluation
+
+`evals/golden_questions.json` contains a small question set with expected tables,
+columns, and forbidden keywords. With a Groq key configured:
+
+```bash
+python scripts/evaluate.py
+python scripts/evaluate.py --cases evals/golden_questions.json --row-limit 50
+```
+
+Each case runs through the full agent and checks the generated statement; the
+script exits non-zero if any case fails.
+
 ---
 
 ## Safety model
